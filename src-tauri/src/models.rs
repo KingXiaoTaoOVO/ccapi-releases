@@ -79,3 +79,57 @@ pub struct InstallDone {
     pub code: Option<i32>,
     pub message: String,
 }
+
+/// Options for [`uninstall_claude`] — tells the backend which surfaces to wipe.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UninstallOptions {
+    /// Run `npm/pnpm/bun/yarn uninstall -g @anthropic-ai/claude-code` for every
+    /// detected package manager that has the package installed.
+    pub remove_global_package: bool,
+    /// Delete `~/.claude/local` (the native PowerShell installer's drop point).
+    pub remove_native_install_dir: bool,
+    /// Delete `~/.claude/` entirely (config, agents/, skills/, projects/, etc.).
+    pub remove_config_dir: bool,
+    /// Delete the legacy `~/.claude.json` file.
+    pub remove_legacy_config: bool,
+    /// Take a timestamped tar/zip backup of `~/.claude/` first.
+    pub backup_first: bool,
+    /// Kill any running `claude` processes before touching files.
+    #[serde(default)]
+    pub kill_processes: bool,
+    /// (Windows) Strip `Uninstall\Claude*` keys + `HKCU\Software\Anthropic\Claude`
+    /// from the registry.
+    #[serde(default)]
+    pub clean_registry: bool,
+    /// (Windows) Remove any `claude` / `.bun/bin` / `.claude/local` entries from
+    /// the per-user PATH (HKCU\Environment\Path).
+    #[serde(default)]
+    pub clean_path_env: bool,
+    /// Empty the OS recycle bin AFTER all delete operations succeed.
+    #[serde(default)]
+    pub empty_recycle_bin: bool,
+}
+
+/// Per-target outcome returned to the UI so the user can see exactly what
+/// happened (and what was skipped because it didn't exist).
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UninstallStep {
+    pub target: String,
+    pub action: String,
+    /// "ok" | "skipped" | "failed"
+    pub status: String,
+    pub detail: Option<String>,
+}
+
+/// Aggregated result of a one-shot Claude Code uninstall.
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UninstallReport {
+    pub success: bool,
+    /// Absolute path of the pre-uninstall backup archive if `backup_first` was set.
+    pub backup_path: Option<String>,
+    pub steps: Vec<UninstallStep>,
+    pub bytes_removed: u64,
+}

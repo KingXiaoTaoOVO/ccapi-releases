@@ -32,6 +32,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useUpdateStore } from "@/store/useUpdateStore";
 import { toast } from "@/store/useToastStore";
 import { getAppVersion, isAutostart, setAutostart } from "@/services/updater";
+import { UninstallModal } from "@/components/UninstallModal/UninstallModal";
 
 function Section({
   icon: Icon,
@@ -485,6 +486,7 @@ export function Settings() {
 
   const { claudeConfig, refresh, backups, loadBackups, doBackup, doRestore, busy } =
     useConfigFile();
+  const [uninstallOpen, setUninstallOpen] = useState(false);
 
   const testNotify = async () => {
     try {
@@ -727,17 +729,28 @@ export function Settings() {
           {env?.binaryPath && (
             <p className="mt-1 break-all font-mono text-[11px] text-muted">{env.binaryPath}</p>
           )}
-          <Button
-            className="mt-3"
-            variant="secondary"
-            size="sm"
-            onClick={refreshEnv}
-            loading={detecting}
-          >
-            <RotateCw className="h-3.5 w-3.5" /> {t("set.recheckEnv")}
-          </Button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={refreshEnv}
+              loading={detecting}
+            >
+              <RotateCw className="h-3.5 w-3.5" /> {t("set.recheckEnv")}
+            </Button>
+            {env?.installed && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setUninstallOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> {t("uninstall.openButton")}
+              </Button>
+            )}
+          </div>
         </Section>
       </div>
+      <UninstallModal open={uninstallOpen} onClose={() => setUninstallOpen(false)} />
     </div>
   );
 }

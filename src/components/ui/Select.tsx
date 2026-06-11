@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 import gsap from "gsap";
@@ -11,10 +11,16 @@ export interface SelectOption {
   label: string;
 }
 
+export interface SelectOptionGroup {
+  label: string;
+  options: SelectOption[];
+}
+
 interface SelectProps {
   value: string;
   onValueChange: (value: string) => void;
-  options: SelectOption[];
+  /** 扁平选项 或 分组选项（按 key / 后端来源分组显示） */
+  options: SelectOption[] | SelectOptionGroup[];
   label?: string;
   hint?: string;
   disabled?: boolean;
@@ -22,10 +28,17 @@ interface SelectProps {
   placeholder?: string;
 }
 
+function isGrouped(opts: SelectOption[] | SelectOptionGroup[]): opts is SelectOptionGroup[] {
+  return opts.length > 0 && (opts as SelectOptionGroup[])[0]?.options !== undefined;
+}
+
 /**
  * Custom glass dropdown — replaces the native <select> with a styled,
  * GSAP-animated popover rendered in a portal (so it escapes overflow clipping
  * inside modals). Controlled via value / onValueChange.
+ *
+ * Supports both a flat `SelectOption[]` and a grouped `SelectOptionGroup[]`
+ * (used by the model picker to group models by source key).
  */
 export function Select({
   value,
@@ -42,7 +55,14 @@ export function Select({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const selected = options.find((o) => o.value === value);
+  const flat: SelectOption[] = useMemo(() => {
+    if (isGrouped(options)) {
+      return options.flatMap((g) => g.options);
+    }
+    return options;
+  }, [options]);
+
+  const selected = flat.find((o) => o.value === value);
 
   const place = () => {
     const el = triggerRef.current;
@@ -120,8 +140,8 @@ export function Select({
         className,
       )}
     >
-      <span className={cn("truncate", !selected && "text-muted")}>
-        {selected?.label ?? placeholder ?? ""}
+      <span className={cn("truncate", !selected && !value && "text-muted")}>
+        {selected?.label ?? (value || placeholder) ?? ""}
       </span>
       <ChevronDown
         className={cn(
@@ -131,6 +151,27 @@ export function Select({
       />
     </button>
   );
+
+  const renderOption = (o: SelectOption) => {
+    const active = o.value === value;
+    return (
+      <button
+        key={o.value}
+        data-opt
+        type="button"
+        onClick={() => choose(o.value)}
+        className={cn(
+          "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+          active
+            ? "bg-primary/12 text-primary"
+            : "text-text hover:bg-surface-2",
+        )}
+      >
+        <span className="truncate">{o.label}</span>
+        {active && <Check className="h-4 w-4 shrink-0" />}
+      </button>
+    );
+  };
 
   return (
     <Field label={label} hint={hint}>
@@ -147,26 +188,24 @@ export function Select({
               width: rect.width,
             }}
           >
-            {options.map((o) => {
-              const active = o.value === value;
-              return (
-                <button
-                  key={o.value}
-                  data-opt
-                  type="button"
-                  onClick={() => choose(o.value)}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                    active
-                      ? "bg-primary/12 text-primary"
-                      : "text-text hover:bg-surface-2",
-                  )}
-                >
-                  <span className="truncate">{o.label}</span>
-                  {active && <Check className="h-4 w-4 shrink-0" />}
-                </button>
-              );
-            })}
+            {isGrouped(options)
+              ? options.map((g, gi) => (
+                  <div key={`${g.label}-${gi}`} className="mb-1 last:mb-0">
+                    <div className="sticky top-0 z-[1] bg-surface-2/80 backdrop-blur px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/80 rounded-md">
+                      {g.label}
+                    </div>
+                    <div>
+                      {g.options.length === 0 ? (
+                        <div className="px-3 py-1.5 text-[11px] text-muted/60 italic">
+                          —
+                        </div>
+                      ) : (
+                        g.options.map(renderOption)
+                      )}
+                    </div>
+                  </div>
+                ))
+              : (options as SelectOption[]).map(renderOption)}
           </div>,
           document.body,
         )}

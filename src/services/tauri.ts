@@ -8,7 +8,18 @@ import type {
   InstallLog,
   KeyCheckResult,
   QuotaInfo,
+  UninstallOptions,
+  UninstallReport,
 } from "@/types";
+import type {
+  InitReport,
+  ModeState,
+  MysqlConfig,
+  RedisConfig,
+  RemoteHealth,
+  ServerLocalConfig,
+  ServerStatus,
+} from "@/types/auth";
 
 /**
  * Thin, fully-typed wrappers around the Rust commands. Components/services
@@ -21,6 +32,29 @@ export const detectClaude = () => invoke<ClaudeEnvInfo>("detect_claude");
 export const installClaude = (method: string) =>
   invoke<void>("install_claude", { method });
 
+/** Auto-pick the best available package manager and run the install.
+ *  Resolves to the actually chosen method id ("bun" | "pnpm" | "npm" | "yarn" | "native"). */
+export const installClaudeSmart = () =>
+  invoke<string>("install_claude_smart");
+
+// ----- avatar (本地存储) -----
+export const saveUserAvatar = (args: {
+  userId: number;
+  mime: string;
+  bytes: number[];
+}) =>
+  invoke<string>("save_user_avatar", {
+    userId: args.userId,
+    mime: args.mime,
+    bytes: args.bytes,
+  });
+
+export const readUserAvatar = (userId: number) =>
+  invoke<string | null>("read_user_avatar", { userId });
+
+export const deleteUserAvatar = (userId: number) =>
+  invoke<void>("delete_user_avatar", { userId });
+
 export const cancelInstall = () => invoke<void>("cancel_install");
 
 export const onInstallLog = (cb: (log: InstallLog) => void): Promise<UnlistenFn> =>
@@ -28,6 +62,9 @@ export const onInstallLog = (cb: (log: InstallLog) => void): Promise<UnlistenFn>
 
 export const onInstallDone = (cb: (done: InstallDone) => void): Promise<UnlistenFn> =>
   listen<InstallDone>("install://done", (e) => cb(e.payload));
+
+export const uninstallClaude = (opts: UninstallOptions) =>
+  invoke<UninstallReport>("uninstall_claude", { opts });
 
 // ----- system tray quick actions -----
 export type TrayAction = "nav:dashboard" | "nav:settings" | "rotate" | "checkAll";
@@ -172,8 +209,80 @@ export const setProxyKeys = (
 ) => invoke<void>("set_proxy_keys", { keys, defaultBaseUrl, activeId });
 export const setProxyToken = (token: string) =>
   invoke<void>("set_proxy_token", { token });
+
+/** 启用本地代理的"官方代理桥接"。传 null / 空字符串关闭。 */
+export const setProxyOfficialMode = (args: {
+  serverUrl: string | null;
+  jwt: string | null;
+}) =>
+  invoke<void>("set_proxy_official_mode", {
+    serverUrl: args.serverUrl,
+    jwt: args.jwt,
+  });
+
+// ----- 一键配置外部 CLI -----
+export interface CodexConfigReport {
+  configPath: string;
+  authPath: string;
+  createdProvider: boolean;
+  hadExistingConfig: boolean;
+}
+
+export const configureCodex = (args: {
+  baseUrl: string;
+  token: string;
+  model?: string;
+}) =>
+  invoke<CodexConfigReport>("configure_codex", {
+    baseUrl: args.baseUrl,
+    token: args.token,
+    model: args.model ?? null,
+  });
+
+export interface CodexCurrentConfig {
+  configPath: string;
+  configExists: boolean;
+  modelProvider: string | null;
+  ccapiBaseUrl: string | null;
+  defaultModel: string | null;
+}
+
+export const readCodexConfig = () => invoke<CodexCurrentConfig>("read_codex_config");
+
+/** 把 base_url + token 写入 ~/.claude/settings.json（Claude Code）。底层复用 apply_key_to_config。 */
+export const configureClaudeCode = (args: {
+  baseUrl: string;
+  token: string;
+  authField?: "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY";
+}) =>
+  invoke<string>("apply_key_to_config", {
+    key: args.token,
+    baseUrl: args.baseUrl,
+    authField: args.authField ?? "ANTHROPIC_AUTH_TOKEN",
+    backup: true,
+  });
+
 export const checkPortAvailable = (port: number) =>
   invoke<boolean>("check_port_available", { port });
+
+export const setProxyActiveUser = (userId: number) =>
+  invoke<void>("set_proxy_active_user", { userId });
+
+/**
+ * 直接探测某把 key 上游能提供的模型列表 —— 完全绕开本地代理 router，
+ * 不会触发冷却 / 计费 / 失败计数。供 Chat / Playground / Agents 的
+ * 模型下拉框「按 key 分组」动态填充。
+ */
+export const fetchModelsForKey = (args: {
+  baseUrl: string | null;
+  apiKey: string;
+  authField?: "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY" | null;
+}) =>
+  invoke<string[]>("fetch_models_for_key", {
+    baseUrl: args.baseUrl,
+    apiKey: args.apiKey,
+    authField: args.authField ?? null,
+  });
 
 export const onProxySwitch = (
   cb: (e: ProxySwitchEvent) => void,
@@ -184,3 +293,39 @@ export const onProxyMetrics = (
   cb: (m: ProxyMetrics) => void,
 ): Promise<UnlistenFn> =>
   listen<ProxyMetrics>("proxy://metrics", (e) => cb(e.payload));
+
+// ============================================================================
+// 服务端 / 客户端模式（Phase 1+）
+// ============================================================================
+
+export const getMode = () => invoke<ModeState>("get_mode");
+export const setMode = (state: ModeState) =>
+  invoke<void>("set_mode", { state });
+
+export const readServerLocalConfig = () =>
+  invoke<ServerLocalConfig>("read_server_local_config");
+export const writeServerLocalConfig = (cfg: ServerLocalConfig) =>
+  invoke<void>("write_server_local_config", { cfg });
+export const verifyEntryPassword = (password: string) =>
+  invoke<boolean>("verify_entry_password", { password });
+export const changeEntryPassword = (oldPassword: string, newPassword: string) =>
+  invoke<void>("change_entry_password", { oldPassword, newPassword });
+
+export const testMysqlConnection = (cfg: MysqlConfig) =>
+  invoke<void>("test_mysql_connection", { cfg });
+export const testRedisConnection = (cfg: RedisConfig) =>
+  invoke<void>("test_redis_connection", { cfg });
+export const initDatabase = () => invoke<InitReport>("init_database");
+export const resetDatabase = () => invoke<InitReport>("reset_database");
+
+export const startAdminServer = () =>
+  invoke<ServerStatus>("start_admin_server");
+export const stopAdminServer = () => invoke<void>("stop_admin_server");
+export const adminServerStatus = () =>
+  invoke<ServerStatus>("admin_server_status");
+
+export const probeRemoteServer = (url: string) =>
+  invoke<RemoteHealth>("probe_remote_server", { url });
+
+export const openClientWindow = () =>
+  invoke<void>("open_client_window");

@@ -146,6 +146,32 @@ pub fn install_claude(
     Ok(())
 }
 
+/// Auto-pick the best available package manager and install Claude Code.
+/// Preference order: bun > pnpm > npm > yarn > native (PowerShell / shell).
+/// The `native` fallback uses Anthropic's official installer script and works
+/// even on machines with no package manager.
+///
+/// Returns the chosen install method id (matches `install_command`). The
+/// caller still gets `install://log` + `install://done` events as usual.
+#[tauri::command]
+pub fn install_claude_smart(
+    app: AppHandle,
+    state: State<InstallState>,
+) -> Result<String, String> {
+    // Preference order: bun > pnpm > npm > yarn (then native fallback).
+    let preferred = ["bun", "pnpm", "npm", "yarn"];
+    let mut method: Option<&str> = None;
+    for pm in preferred {
+        if sys::try_version(pm).is_some() {
+            method = Some(pm);
+            break;
+        }
+    }
+    let method = method.unwrap_or("native");
+    install_claude(app, state, method.to_string())?;
+    Ok(method.to_string())
+}
+
 /// Terminate the running installation, if any.
 #[tauri::command]
 pub fn cancel_install(state: State<InstallState>) -> Result<(), String> {

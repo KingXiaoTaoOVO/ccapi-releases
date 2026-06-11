@@ -442,6 +442,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       id: uid("msg"),
       role: message.role,
       content: message.content,
+      attachments: message.attachments,
       createdAt: nowIso(),
     };
     set((s) => ({

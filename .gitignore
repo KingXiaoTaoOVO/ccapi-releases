@@ -44,3 +44,6 @@ build/
 
 # Bun
 bun.lockb
+
+# Local Claude Code permissions / hooks — machine-specific, don't publish
+.claude/

@@ -12,7 +12,6 @@ import {
   DEFAULT_SETTINGS,
   STORAGE_VERSION,
   DEFAULT_BASE_URL,
-  DEFAULT_PROXY_PORT,
   generateProxyKey,
 } from "@/lib/defaults";
 import { uid } from "@/lib/format";
@@ -101,6 +100,8 @@ interface AppState {
   syncProxyKeys: () => void;
   /** Restart the proxy on a new port; used when the user changes the port setting. */
   restartProxy: (port: number) => Promise<void>;
+  /** Start the proxy if it isn't already running (idempotent, no Claude config touch). */
+  ensureProxyRunning: () => Promise<boolean>;
   /** Re-generate a fresh proxy token, push it to the proxy + Claude config. */
   regenerateProxyKey: () => Promise<void>;
   /** Manually refresh the metrics snapshot from the backend. */
@@ -127,15 +128,18 @@ let recoveryTimer: ReturnType<typeof setInterval> | null = null;
 let activeWatchTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Rotation-notification throttle. Proxy-side failover can fire multiple switch
- * events within a couple of seconds when Claude Code retries; without this the
- * UI floods with identical "Auto-rotated to X" toasts. We allow at most one
- * notification per target id within ROTATE_NOTIFY_WINDOW_MS, and one
- * "no usable key" notification within the same window.
+ * Rotation-notification throttle. A single inbound failure can fan out across
+ * the entire key pool (A→B→C→A...) inside the proxy's retry loop, emitting
+ * one `proxy://switch` event per hop with a *different* destination id. The
+ * old per-toId guard was structurally defeated by this rotation, so the user
+ * saw a fresh "已自动轮换" desktop toast for every hop.
+ *
+ * Fix: dedupe on a single global timestamp — at most ONE rotation toast
+ * (and one "no usable key" toast) per ROTATE_NOTIFY_WINDOW_MS, regardless of
+ * which key was the destination.
  */
 const ROTATE_NOTIFY_WINDOW_MS = 30_000;
 let lastRotateNotifyAt = 0;
-let lastRotateNotifyId: string | null = null;
 let lastNoUsableNotifyAt = 0;
 
 let errorLogBound = false;
@@ -178,13 +182,10 @@ function shouldEmitRotateNotice(toId: string | null): boolean {
     lastNoUsableNotifyAt = now;
     return true;
   }
-  if (
-    toId === lastRotateNotifyId &&
-    now - lastRotateNotifyAt < ROTATE_NOTIFY_WINDOW_MS
-  ) {
-    return false;
-  }
-  lastRotateNotifyId = toId;
+  // Global window — defeats the "rotating destination id" defeat-the-throttle
+  // path. We don't care which key the proxy ended up on; we just don't want
+  // to spam the user with one toast per failover hop.
+  if (now - lastRotateNotifyAt < ROTATE_NOTIFY_WINDOW_MS) return false;
   lastRotateNotifyAt = now;
   return true;
 }
@@ -323,8 +324,9 @@ async function doInit(get: StoreGet, set: StoreSet): Promise<void> {
     });
   }
 
-  // Ensure we always have a proxy token — generate one the very first run
-  // (or after an old persisted state from before the proxy-key feature).
+  // Generate a local proxy token if missing — pure local op (no network, no
+  // file writes, no Claude takeover). The token will only be put to use when
+  // the user explicitly starts the proxy from the Dashboard.
   if (!get().settings.proxyKey) {
     const fresh = generateProxyKey();
     set((s) => ({ settings: { ...s.settings, proxyKey: fresh } }));
@@ -332,16 +334,15 @@ async function doInit(get: StoreGet, set: StoreSet): Promise<void> {
   }
 
   set({ ready: true });
-  // Probe environment & config in the background.
+  setDesktopNotifications(get().settings.desktopNotifications);
+
+  // Read-only environment probes — never modify any file or trigger network
+  // requests against the upstream API.
   get().refreshEnv();
   get().refreshClaudeConfig();
-  if (get().settings.monitorIntervalSec > 0) get().startMonitor();
-  setDesktopNotifications(get().settings.desktopNotifications);
-  get().startActiveWatch();
 
-  // Live key-switch events from the proxy (Rust side). Only success ("ok"
-  // status hint) avoids being logged — every other outcome is a real failure
-  // the user wants to see in the Logs view.
+  // Passive event listeners — they only do something IF the user starts the
+  // proxy later. With the proxy stopped (the new default), no events fire.
   onProxySwitch((e) => {
     const patch: Partial<ApiKey> = {
       status: e.statusHint,
@@ -402,48 +403,11 @@ async function doInit(get: StoreGet, set: StoreSet): Promise<void> {
     }
   });
 
-  // Subscribe to throttled metric pushes from the proxy.
   onProxyMetrics((m) => set({ proxyStats: m }));
 
-  // Always-on local proxy: start it; if the port is taken, surface a toast
-  // and let the user pick a new one in Settings — the app stays usable.
-  try {
-    const port = await startProxy(
-      get().settings.proxyPort || DEFAULT_PROXY_PORT,
-    );
-    await setProxyToken(get().settings.proxyKey);
-    set({ proxyRunning: true });
-    get().updateSettings({ proxyPort: port });
-    get().syncProxyKeys();
-
-    try {
-      const cfg = await readClaudeConfig();
-      const wanted = `http://127.0.0.1:${port}`;
-      const wrongBase = (cfg.currentBaseUrl ?? "") !== wanted;
-      const wrongToken = (cfg.currentKey ?? "") !== get().settings.proxyKey;
-      if (wrongBase || wrongToken) {
-        await migrateToProxy({
-          port,
-          token: get().settings.proxyKey,
-          backup: get().settings.autoBackup,
-        });
-        await get().refreshClaudeConfig();
-        if (cfg.exists && (cfg.currentKey || cfg.currentBaseUrl)) {
-          notify("info", t("proxy.takeover"), t("proxy.takeoverDesc"));
-        }
-      } else {
-        await get().refreshClaudeConfig();
-      }
-    } catch (e) {
-      console.error("接管 Claude 配置失败", e);
-    }
-  } catch (e) {
-    set({ proxyRunning: false });
-    toast.error(t("proxy.startFailed"), String(e));
-  }
-
-  // Cooldown auto-recovery: once a key's cooldown elapses, return it to the
-  // pool so it can be re-checked and re-used.
+  // Cooldown auto-recovery: a passive timer that only flips already-cooled
+  // keys from "cooling" back to "unknown". Does NOT start the proxy or call
+  // any upstream API.
   if (!recoveryTimer) {
     recoveryTimer = setInterval(() => {
       const cooled = get().keys.filter(
@@ -701,6 +665,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       toast.error(t("proxy.startFailed"), String(e));
     }
+  },
+
+  /**
+   * Idempotent "make sure the local proxy is up" — no Claude config rewrite,
+   * no stop-then-start. Used by views (Chat composer, ProxySourceCard switch)
+   * that need the proxy bound to a port before they can fetch through it.
+   *
+   * On port-bind failure (port already taken by another process) auto-retries
+   * a couple of close-by ports so a stuck dev-build doesn't lock the user out.
+   */
+  ensureProxyRunning: async () => {
+    if (get().proxyRunning) return true;
+    const desired = get().settings.proxyPort ?? 31415;
+    // Try the configured port, then a few sequential fallbacks. Rust's start_proxy
+    // surfaces a hard error on bind failure (it does NOT silently switch ports),
+    // so we drive the retry from the JS side.
+    const candidates = [desired, desired + 1, desired + 2, 31415, 31416, 31417]
+      .filter((p, i, arr) => arr.indexOf(p) === i);
+    let lastErr: unknown = null;
+    for (const port of candidates) {
+      try {
+        const bound = await startProxy(port);
+        await setProxyToken(get().settings.proxyKey);
+        set({ proxyRunning: true });
+        if (bound !== desired) {
+          get().updateSettings({ proxyPort: bound });
+          toast.warning("端口已切换", `${desired} → ${bound}`);
+        }
+        get().syncProxyKeys();
+        return true;
+      } catch (e) {
+        lastErr = e;
+        // Try the next candidate.
+      }
+    }
+    console.error("ensureProxyRunning failed", lastErr);
+    toast.error(t("proxy.startFailed"), String(lastErr ?? "unknown"));
+    return false;
   },
 
   regenerateProxyKey: async () => {

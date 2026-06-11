@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bot, MessageSquare, Play } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Select";
+import { Select, type SelectOption } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { TextArea, TextField } from "@/components/ui/TextField";
 import { WorkspacePage } from "@/components/workspace/WorkspacePage";
@@ -13,7 +13,10 @@ import type { Agent, AgentSandbox, AgentApproval } from "@/types";
 import type { MessageKey } from "@/i18n/messages";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useAppStore } from "@/store/useAppStore";
+import { useAuthStore } from "@/store/useAuthStore";
+import { useModeStore } from "@/store/useModeStore";
 import { toast } from "@/store/useToastStore";
+import { getAvailableModels } from "@/services/models";
 import { cn } from "@/lib/cn";
 
 const SANDBOX_LABEL: Record<AgentSandbox, MessageKey> = {
@@ -27,12 +30,6 @@ const APPROVAL_LABEL: Record<AgentApproval, MessageKey> = {
   onDemand: "agent.approval.onDemand",
   neverAsk: "agent.approval.neverAsk",
 };
-
-const MODEL_OPTIONS = [
-  { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
-  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-];
 
 interface DraftState {
   name: string;
@@ -53,7 +50,7 @@ const EMPTY_DRAFT: DraftState = {
   role: "",
   description: "",
   systemPrompt: "",
-  model: MODEL_OPTIONS[0].value,
+  model: "",
   sandbox: "workspaceWrite",
   approval: "onDemand",
   networkAccess: false,
@@ -160,11 +157,49 @@ export function Agents() {
   const enqueueTask = useWorkspaceStore((s) => s.enqueueTask);
   const createChat = useWorkspaceStore((s) => s.createChat);
   const setView = useAppStore((s) => s.setView);
+  const proxySource = useAppStore((s) => s.settings.proxySource ?? "local");
+  const keys = useAppStore((s) => s.keys);
+  const activeKeyId = useAppStore((s) => s.activeKeyId);
+  const serverUrl = useModeStore((s) => s.serverUrl);
+  const jwt = useAuthStore((s) => s.session?.tokens.accessToken);
 
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Agent | null>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DraftState>(EMPTY_DRAFT);
+  const [modelOptions, setModelOptions] = useState<SelectOption[]>([]);
+  const [modelFlat, setModelFlat] = useState<string[]>([]);
+
+  /** 稳定指纹 —— 监控扫描更新 status 不会触发重探。 */
+  const keysFingerprint = useMemo(() => {
+    if (proxySource === "official") return "";
+    return keys
+      .filter((k) => k.enabled && !!k.key)
+      .map((k) =>
+        [k.id, k.key, k.url ?? "", k.authField ?? ""].join(""),
+      )
+      .join("");
+  }, [keys, proxySource]);
+
+  // 动态拉「当前代理实际能用的模型列表」——
+  // 所有 key 的模型合并去重（相同模型只显示一次），按出现顺序（active key 优先）排列
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await getAvailableModels(
+        proxySource === "official"
+          ? { source: "official", serverUrl, jwt: jwt ?? null }
+          : { source: "local", keys, activeKeyId },
+      );
+      if (cancelled) return;
+      setModelOptions(res.flat.map((m) => ({ value: m, label: m })));
+      setModelFlat(res.flat);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proxySource, serverUrl, jwt, keysFingerprint, activeKeyId]);
 
   const sandboxOptions = (
     Object.keys(SANDBOX_LABEL) as AgentSandbox[]
@@ -185,7 +220,7 @@ export function Agents() {
 
   const openCreate = () => {
     setEditing(null);
-    setDraft(EMPTY_DRAFT);
+    setDraft({ ...EMPTY_DRAFT, model: modelFlat[0] ?? "" });
     setOpen(true);
   };
 
@@ -370,7 +405,8 @@ export function Agents() {
             label={t("agent.model")}
             value={draft.model}
             onValueChange={(v) => setDraft({ ...draft, model: v })}
-            options={MODEL_OPTIONS}
+            options={modelOptions}
+            placeholder="无可用模型"
           />
           <Select
             label={t("agent.sandbox")}

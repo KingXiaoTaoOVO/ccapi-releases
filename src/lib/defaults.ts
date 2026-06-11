@@ -47,6 +47,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoCheckUpdate: true,
   autoInstallUpdate: false,
   autostart: false,
+  uiScale: 1,
+  fontSize: 14,
+  minimizeToTray: true,
+  alwaysConfirmDangerous: true,
+  autoRetryCount: 1,
+  lockTimeoutSecs: 0,
+  proxySource: "local",
+  networkProxy: { mode: "system" },
+  defaultChannelId: 0,
 };
 
 export const AUTH_FIELD_OPTIONS: {

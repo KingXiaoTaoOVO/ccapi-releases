@@ -101,6 +101,34 @@ export interface AppSettings {
   autoInstallUpdate: boolean;
   /** Launch CCAPI when the user signs into the OS. */
   autostart: boolean;
+
+  // ===== Phase-2 UX 偏好（统一存到 settings 里） =====
+  /** UI 缩放倍率：0.85 / 1 / 1.15 / 1.3 */
+  uiScale?: number;
+  /** 主体字号 (px)：12-18 */
+  fontSize?: number;
+  /** 关闭窗口时最小化到托盘而不是退出（默认 true） */
+  minimizeToTray?: boolean;
+  /** 高危操作是否始终弹出二次确认（即使有"7 天免再问"也忽略） */
+  alwaysConfirmDangerous?: boolean;
+  /** 自动重试次数（用户级，作用于 apiClient） */
+  autoRetryCount?: number;
+  /** 锁屏超时（秒），0 表示关闭 */
+  lockTimeoutSecs?: number;
+  /** 代理来源：local = 走本机出网；official = 走 CCAPI 服务端渠道（扣额度） */
+  proxySource?: "local" | "official";
+
+  /** 网络代理：影响所有出网请求 */
+  networkProxy?: NetworkProxyConfig;
+
+  /** 默认渠道 ID（0 = 自动智能路由）。仅持久化偏好，relay 消费在第 2 波。 */
+  defaultChannelId?: number;
+}
+
+export interface NetworkProxyConfig {
+  mode: "system" | "direct" | "http" | "socks5";
+  /** 仅 http / socks5 模式使用，形如 "http://127.0.0.1:7890" */
+  url?: string;
 }
 
 export interface QuotaInfo {
@@ -186,6 +214,37 @@ export interface InstallDone {
   success: boolean;
   code: number | null;
   message: string;
+}
+
+export interface UninstallOptions {
+  removeGlobalPackage: boolean;
+  removeNativeInstallDir: boolean;
+  removeConfigDir: boolean;
+  removeLegacyConfig: boolean;
+  backupFirst: boolean;
+  /** Kill running claude processes first. */
+  killProcesses?: boolean;
+  /** Windows only: HKCU\Software\Anthropic + Uninstall\Claude*. */
+  cleanRegistry?: boolean;
+  /** Windows only: strip claude-related segments from HKCU\Environment\Path. */
+  cleanPathEnv?: boolean;
+  /** Empty the OS recycle bin after deletions. */
+  emptyRecycleBin?: boolean;
+}
+
+export interface UninstallStep {
+  target: string;
+  action: string;
+  /** "ok" | "skipped" | "failed" */
+  status: "ok" | "skipped" | "failed";
+  detail?: string;
+}
+
+export interface UninstallReport {
+  success: boolean;
+  backupPath?: string;
+  steps: UninstallStep[];
+  bytesRemoved: number;
 }
 
 // ----- Workspace entities (Skills / MCP / Rules / Agents / Tasks / Chat) -----
@@ -280,10 +339,23 @@ export interface AgentTask {
 export type ChatRole = "user" | "assistant" | "system";
 export type ChatMode = "ask" | "code";
 
+/** 附件元数据：图片或文件，用 base64 data URL 携带二进制；非常大文件警告用户。 */
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  /** MIME；图片 image/png 等 */
+  mime: string;
+  size: number;
+  /** data:image/...;base64,... — 在前端预览/重新发送都直接用它 */
+  dataUrl: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
+  /** 可选附件列表；图片在气泡里显示缩略图，其它文件显示徽章 */
+  attachments?: ChatAttachment[];
   /** Wall-clock ISO timestamp. */
   createdAt: string;
 }
