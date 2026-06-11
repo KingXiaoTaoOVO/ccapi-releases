@@ -296,10 +296,12 @@ export function Chat() {
         }),
       });
       if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(
-          `HTTP ${resp.status}: ${errText.slice(0, 300) || resp.statusText}`,
-        );
+        const errText = (await resp.text()).trim();
+        // 上游可能把错误信息分成多行（"hi\nService Unavailable"），CSS 折叠后
+        // 会变成 "hiService Unavailable" 这种贴在一起的乱码，统一压成单空格。
+        const oneLine = errText.replace(/\s+/g, " ").slice(0, 300);
+        const detail = oneLine || resp.statusText || "Request failed";
+        throw new Error(`HTTP ${resp.status}: ${detail}`);
       }
       const data = await resp.json();
       const reply =

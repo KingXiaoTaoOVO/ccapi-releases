@@ -1355,6 +1355,7 @@ export const messages = {
     // 用户仪表盘图表
     "client.dash.chartTokens": "近 30 天 Token 趋势",
     "client.dash.chartModels": "模型消耗占比",
+    "client.dash.chartTotal": "总计 Token",
     "client.dash.recent": "最近 20 次调用",
     "client.dash.noData": "暂无调用记录",
     "client.dash.legend.input": "输入",
@@ -1807,6 +1808,8 @@ export const messages = {
     "admin.dash.col.channel": "渠道",
     "admin.dash.col.failCount": "失败次数",
     "admin.dash.col.status": "状态",
+    "admin.dash.totalSpend": "总消费",
+    "admin.dash.totalTokens": "Token 总量",
     "client.dash.alert.lowQuota": "提醒：你的滑动窗口配额已用超过 80%。",
     "client.dash.alert.expired": "你的订阅已到期，请及时续费。",
     "client.dash.alert.renewSoon": "订阅即将到期：剩 {days} 天。",
@@ -3287,6 +3290,7 @@ export const messages = {
     // Client dashboard charts
     "client.dash.chartTokens": "Token usage (last 30 days)",
     "client.dash.chartModels": "Top models by tokens",
+    "client.dash.chartTotal": "Total tokens",
     "client.dash.recent": "Recent 20 calls",
     "client.dash.noData": "No usage yet",
     "client.dash.legend.input": "Input",
@@ -3724,6 +3728,8 @@ export const messages = {
     "admin.dash.col.channel": "Channel",
     "admin.dash.col.failCount": "Fail count",
     "admin.dash.col.status": "Status",
+    "admin.dash.totalSpend": "Total spend",
+    "admin.dash.totalTokens": "Total tokens",
     "client.dash.alert.lowQuota": "Heads-up: you've used over 80% of a rolling window.",
     "client.dash.alert.expired": "Your subscription has expired — please renew.",
     "client.dash.alert.renewSoon": "Subscription expires in {days} day(s).",

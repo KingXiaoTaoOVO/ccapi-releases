@@ -21,6 +21,7 @@ import { useT } from "@/i18n";
 import { adminServerStatus, openClientWindow } from "@/services/tauri";
 import { apiGet } from "@/services/apiClient";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useThemeStore } from "@/store/useThemeStore";
 import { notify } from "@/services/notify";
 import type { ServerStatus } from "@/types/auth";
 
@@ -107,6 +108,7 @@ export function AdminDashboard() {
   const t = useT();
   const ref = useEntrance<HTMLDivElement>({ y: 12 });
   const user = useAuthStore((s) => s.session?.user);
+  const resolved = useThemeStore((s) => s.resolved);
 
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [ov, setOv] = useState<Overview | null>(null);
@@ -341,7 +343,7 @@ export function AdminDashboard() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <ChartCard title={t("admin.dash.groupSpend")}>
             {groupSpend.length > 0 ? (
-              <Chart option={groupSpendPieOption(groupSpend)} />
+              <Chart option={groupSpendPieOption(groupSpend, t("admin.dash.totalSpend"), resolved)} />
             ) : (
               <div className="grid h-full place-items-center text-xs text-muted">
                 {t("admin.dash.emptyChart")}
@@ -413,7 +415,7 @@ export function AdminDashboard() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="h-56">
                 {topModels.length > 0 ? (
-                  <Chart option={modelsPieOption(topModels)} />
+                  <Chart option={modelsPieOption(topModels, t("admin.dash.totalTokens"), resolved)} />
                 ) : (
                   <div className="grid h-full place-items-center text-xs text-muted">
                     {t("admin.dash.emptyTop")}
@@ -668,16 +670,36 @@ function channelStackOption(
   };
 }
 
-function groupSpendPieOption(rows: GroupSpend[]): EChartsOption {
+function groupSpendPieOption(
+  rows: GroupSpend[],
+  totalLabel: string,
+  resolved: "dark" | "light",
+): EChartsOption {
+  const total = rows.reduce((s, g) => s + Number(g.costUsd || 0), 0);
+  const labelColor = resolved === "dark" ? "rgba(228,231,236,0.65)" : "rgba(40,46,56,0.6)";
+  const valueColor = resolved === "dark" ? "rgba(228,231,236,0.95)" : "rgba(40,46,56,0.92)";
+  const borderColor = resolved === "dark" ? "#15171c" : "#fff";
   return {
     tooltip: { trigger: "item", formatter: "{b}: ${c} ({d}%)" },
     legend: { show: false },
+    title: {
+      text: totalLabel,
+      subtext: `$${total.toFixed(2)}`,
+      left: "50%",
+      top: "50%",
+      textAlign: "center",
+      textVerticalAlign: "middle",
+      textStyle: { fontSize: 11, color: labelColor, fontWeight: "normal" },
+      subtextStyle: { fontSize: 16, fontWeight: 600, color: valueColor },
+      itemGap: 4,
+    },
     series: [
       {
         type: "pie",
-        radius: ["40%", "70%"],
+        radius: ["45%", "70%"],
+        center: ["50%", "50%"],
         avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 4 },
+        itemStyle: { borderRadius: 4, borderColor, borderWidth: 1 },
         label: { fontSize: 11 },
         data: rows.map((g) => ({
           name: g.name,
@@ -737,16 +759,36 @@ function SystemBar({
   );
 }
 
-function modelsPieOption(top: TopModel[]): EChartsOption {
+function modelsPieOption(
+  top: TopModel[],
+  totalLabel: string,
+  resolved: "dark" | "light",
+): EChartsOption {
+  const totalTokens = top.reduce((s, m) => s + (m.tokens || 0), 0);
+  const labelColor = resolved === "dark" ? "rgba(228,231,236,0.65)" : "rgba(40,46,56,0.6)";
+  const valueColor = resolved === "dark" ? "rgba(228,231,236,0.95)" : "rgba(40,46,56,0.92)";
+  const borderColor = resolved === "dark" ? "#15171c" : "#fff";
   return {
     tooltip: { trigger: "item" },
     legend: { show: false },
+    title: {
+      text: totalLabel,
+      subtext: totalTokens.toLocaleString(),
+      left: "50%",
+      top: "50%",
+      textAlign: "center",
+      textVerticalAlign: "middle",
+      textStyle: { fontSize: 11, color: labelColor, fontWeight: "normal" },
+      subtextStyle: { fontSize: 14, fontWeight: 600, color: valueColor },
+      itemGap: 4,
+    },
     series: [
       {
         type: "pie",
-        radius: ["45%", "70%"],
+        radius: ["50%", "72%"],
+        center: ["50%", "50%"],
         avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 4 },
+        itemStyle: { borderRadius: 4, borderColor, borderWidth: 1 },
         label: { fontSize: 11 },
         data: top.map((m) => ({
           name: m.model.split("-").slice(-2).join("-"),

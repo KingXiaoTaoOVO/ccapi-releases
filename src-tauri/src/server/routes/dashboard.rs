@@ -7,7 +7,7 @@ use axum::extract::{Extension, Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::{BigDecimal, ToPrimitive};
-use chrono::NaiveDateTime;
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -152,7 +152,7 @@ struct TimeseriesQuery {
 #[serde(rename_all = "camelCase")]
 struct DailyRow {
     /// 日期（仅 YYYY-MM-DD）
-    day: NaiveDateTime,
+    day: NaiveDate,
     calls: i64,
     input_tokens: Option<BigDecimal>,
     output_tokens: Option<BigDecimal>,

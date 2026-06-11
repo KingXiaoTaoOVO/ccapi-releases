@@ -320,11 +320,13 @@ export function ContextMenuProvider({ children }: { children: React.ReactNode })
       },
     );
     const items = menuRef.current.querySelectorAll("[data-ctx-item]");
-    gsap.fromTo(
-      items,
-      { opacity: 0, x: -4 },
-      { opacity: 1, x: 0, duration: 0.16, stagger: 0.02, ease: "power2.out" },
-    );
+    if (items.length > 0) {
+      gsap.fromTo(
+        items,
+        { opacity: 0, x: -4 },
+        { opacity: 1, x: 0, duration: 0.16, stagger: 0.02, ease: "power2.out" },
+      );
+    }
   }, [menu]);
 
   const api = useMemo<ContextMenuApi>(() => ({ open, close }), [open, close]);

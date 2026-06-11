@@ -72,12 +72,11 @@ export function Security() {
       setTwoFaEnabled(a.enabled);
       setPasskeys(b.passkeys);
       setLinks(c.links);
-      // 公开 provider 列表（通过 site/info 或 admin 接口）—— 这里没有公开 list 接口，
-      // 用 admin 接口（普通用户没权限会 403，前端 catch 后留空数组）
+      // 已登录用户均可访问的 enabled-providers 列表（不暴露 client_id/secret 等）
       const p = await apiGet<{ providers: OAuthProvider[] }>(
-        "/api/admin/oauth/providers",
+        "/api/oauth/providers",
       ).catch(() => ({ providers: [] as OAuthProvider[] }));
-      setProviders(p.providers.filter((x) => x.enabled));
+      setProviders(p.providers);
     } catch {
       // ignore
     }

@@ -9,6 +9,7 @@ import { useT } from "@/i18n";
 import { apiGet } from "@/services/apiClient";
 import { Chart } from "@/components/charts/Chart";
 import { ProxySourceCard } from "@/components/ProxySourceCard/ProxySourceCard";
+import { useThemeStore } from "@/store/useThemeStore";
 
 interface QuotaSnapshot {
   bonusRemainingUsd: string;
@@ -57,6 +58,7 @@ interface CheckinState {
 export function ClientDashboard() {
   const t = useT();
   const ref = useEntrance<HTMLDivElement>({ y: 12 });
+  const resolved = useThemeStore((s) => s.resolved);
   const [q, setQ] = useState<QuotaSnapshot | null>(null);
   const [tierName, setTierName] = useState<string | null>(null);
   const [logs, setLogs] = useState<UsageLog[]>([]);
@@ -330,7 +332,13 @@ export function ClientDashboard() {
                   {t("client.dash.noData")}
                 </div>
               ) : (
-                <Chart option={userModelPieOption(modelTop)} />
+                <Chart
+                  option={userModelPieOption(
+                    modelTop,
+                    t("client.dash.chartTotal"),
+                    resolved,
+                  )}
+                />
               )}
             </div>
           </div>
@@ -464,14 +472,31 @@ function userTokenOption(
 
 function userModelPieOption(
   rows: { model: string; tokens: number }[],
+  totalLabel: string,
+  resolved: "dark" | "light",
 ): EChartsOption {
+  const total = rows.reduce((s, r) => s + (r.tokens || 0), 0);
+  const labelColor = resolved === "dark" ? "rgba(228,231,236,0.65)" : "rgba(40,46,56,0.6)";
+  const valueColor = resolved === "dark" ? "rgba(228,231,236,0.95)" : "rgba(40,46,56,0.92)";
   return {
     tooltip: { trigger: "item" },
     legend: { show: false },
+    title: {
+      text: totalLabel,
+      subtext: total.toLocaleString(),
+      left: "50%",
+      top: "50%",
+      textAlign: "center",
+      textVerticalAlign: "middle",
+      textStyle: { fontSize: 11, color: labelColor, fontWeight: "normal" },
+      subtextStyle: { fontSize: 16, fontWeight: 600, color: valueColor },
+      itemGap: 4,
+    },
     series: [
       {
         type: "pie",
         radius: ["45%", "70%"],
+        center: ["50%", "50%"],
         avoidLabelOverlap: true,
         itemStyle: { borderRadius: 4 },
         label: { fontSize: 11 },

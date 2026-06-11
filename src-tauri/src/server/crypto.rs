@@ -9,7 +9,7 @@
 //! `aes` crate 在 x86_64 上能用 AES-NI 硬件加速，性能也够。
 
 use aes_gcm::aead::{Aead, KeyInit, OsRng};
-use aes_gcm::{AeadCore, Aes256Gcm, Key, Nonce};
+use aes_gcm::{AeadCore, Aes256Gcm, Nonce};
 use base64::Engine;
 use sha2::{Digest, Sha256};
 
@@ -27,8 +27,7 @@ fn derive_key(secret: &str) -> [u8; 32] {
 /// 加密 `plain`，返回 `nonce || ciphertext || tag` 的 Base64。
 pub fn encrypt(secret: &str, plain: &str) -> Result<String, String> {
     let key_bytes = derive_key(secret);
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    let cipher = Aes256Gcm::new(key);
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| format!("key: {e}"))?;
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ct = cipher
         .encrypt(&nonce, plain.as_bytes())
@@ -50,11 +49,13 @@ pub fn decrypt(secret: &str, blob: &str) -> Result<String, String> {
     }
     let (nonce_bytes, ct) = raw.split_at(12);
     let key_bytes = derive_key(secret);
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    let cipher = Aes256Gcm::new(key);
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| format!("key: {e}"))?;
+    let nonce_arr: [u8; 12] = nonce_bytes
+        .try_into()
+        .map_err(|_| "nonce length".to_string())?;
+    let nonce = Nonce::from(nonce_arr);
     let plain = cipher
-        .decrypt(nonce, ct)
+        .decrypt(&nonce, ct)
         .map_err(|e| format!("decrypt: {e}"))?;
     String::from_utf8(plain).map_err(|e| format!("utf8: {e}"))
 }

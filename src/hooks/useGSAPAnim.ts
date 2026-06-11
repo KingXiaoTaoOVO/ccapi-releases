@@ -45,8 +45,10 @@ export function useStaggerChildren<T extends HTMLElement>(
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || prefersReducedMotion()) return;
+    const targets = el.querySelectorAll(selector);
+    if (targets.length === 0) return;
     const ctx = gsap.context(() => {
-      gsap.from(selector, {
+      gsap.from(targets, {
         opacity: 0,
         y: 18,
         duration: 0.5,

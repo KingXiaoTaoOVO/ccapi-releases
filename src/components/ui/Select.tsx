@@ -112,11 +112,13 @@ export function Select({
       { opacity: 1, y: 0, scale: 1, duration: 0.22, ease: "power3.out", transformOrigin: "top center" },
     );
     const items = menuRef.current.querySelectorAll("[data-opt]");
-    gsap.fromTo(
-      items,
-      { opacity: 0, y: -4 },
-      { opacity: 1, y: 0, duration: 0.18, stagger: 0.025, ease: "power2.out", delay: 0.04 },
-    );
+    if (items.length > 0) {
+      gsap.fromTo(
+        items,
+        { opacity: 0, y: -4 },
+        { opacity: 1, y: 0, duration: 0.18, stagger: 0.025, ease: "power2.out", delay: 0.04 },
+      );
+    }
   }, [open]);
 
   const choose = (v: string) => {

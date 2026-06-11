@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
@@ -132,9 +132,8 @@ export function AuditLog() {
                   const isOpen = expanded.has(r.id);
                   const hasPayload = r.payload !== null && r.payload !== undefined;
                   return (
-                    <>
+                    <Fragment key={r.id}>
                       <tr
-                        key={r.id}
                         className={cn(
                           "border-t border-border/60",
                           hasPayload && "cursor-pointer hover:bg-surface-2/30",
@@ -200,7 +199,7 @@ export function AuditLog() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>

@@ -52,7 +52,12 @@ async function rawFetch(
   return fetch(url, { ...init, headers });
 }
 
-async function refreshAccessToken(): Promise<TokenPair | null> {
+// Coalesce concurrent refreshes — if N requests 401 at once we must NOT call
+// /api/refresh N times: the server rotates jti each call and revokes the old
+// one, so only the first refresh wins and the rest get 401 → session wiped.
+let pendingRefresh: Promise<TokenPair | null> | null = null;
+
+async function doRefresh(): Promise<TokenPair | null> {
   const s = config.getSession();
   if (!s?.tokens.refreshToken) return null;
   const resp = await rawFetch(
@@ -69,6 +74,15 @@ async function refreshAccessToken(): Promise<TokenPair | null> {
   const next: AuthSession = { ...s, tokens: body.tokens as TokenPair };
   config.setSession(next);
   return body.tokens as TokenPair;
+}
+
+function refreshAccessToken(): Promise<TokenPair | null> {
+  if (!pendingRefresh) {
+    pendingRefresh = doRefresh().finally(() => {
+      pendingRefresh = null;
+    });
+  }
+  return pendingRefresh;
 }
 
 export async function apiFetch<T = unknown>(

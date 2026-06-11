@@ -38,6 +38,7 @@ pub fn protected_router() -> Router<AppState> {
             "/api/admin/oauth/providers/{id}",
             axum::routing::patch(update_provider).delete(delete_provider),
         )
+        .route("/api/oauth/providers", get(list_enabled_providers))
         .route("/api/me/oauth/links", get(list_my_links))
         .route("/api/me/oauth/links/{id}", delete(delete_my_link))
 }
@@ -77,6 +78,28 @@ async fn list_providers(
         "SELECT id, code, display_name, client_id, authorize_url, token_url, \
                 userinfo_url, scopes, enabled, created_at, updated_at \
          FROM oauth_providers ORDER BY id",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({ "ok": true, "providers": rows })))
+}
+
+/// 已登录用户均可调用：仅返回启用的 provider 的公开字段（id/code/displayName）。
+#[derive(Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+struct ProviderPublicRow {
+    id: i64,
+    code: String,
+    display_name: String,
+    enabled: i8,
+}
+
+async fn list_enabled_providers(
+    State(state): State<AppState>,
+) -> ApiResult<Json<Value>> {
+    let rows: Vec<ProviderPublicRow> = sqlx::query_as(
+        "SELECT id, code, display_name, enabled FROM oauth_providers \
+         WHERE enabled = 1 ORDER BY id",
     )
     .fetch_all(&state.db)
     .await?;
